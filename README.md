@@ -3,17 +3,6 @@
 > **GSoC Submission - EEG Dyadic Manifold Learning**
 > Dual-brain EEG preprocessing and CEBRA-based neural manifold decoding for dyadic affect perception.
 
----
-
-## 📁 Repository Contents
-
-| File | Description |
-|------|-------------|
-| `pipeline_diagram.png` | End-to-end EEG preprocessing pipeline (Phases A–E) |
-| `Untitled_design.png` | NEURODYADS · CEBRA pipeline — dyadic manifold learning overview |
-
----
-
 ## 🗂️ Overview
 
 This repository documents two complementary pipelines developed for the **NeuroDyads hyperscanning** project — a dual-brain EEG study of speaker–listener affect synchrony. Together they cover the full arc from raw EDF acquisition through to topologically validated neural manifold embeddings.
