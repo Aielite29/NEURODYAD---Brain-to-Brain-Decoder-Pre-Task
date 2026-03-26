@@ -1,6 +1,6 @@
 # 🧠 NeuroDyads — EEG Hyperscanning Pipeline
 
-> **GSoC Submission · Part 3 — EEG Dyadic Manifold Learning**
+> **GSoC Submission ·EEG Dyadic Manifold Learning**
 > Dual-brain EEG preprocessing and CEBRA-based neural manifold decoding for dyadic affect perception.
 
 ---
