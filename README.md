@@ -1,6 +1,6 @@
 # 🧠 NeuroDyads — EEG Hyperscanning Pipeline
 
-> **GSoC Submission ·EEG Dyadic Manifold Learning**
+> **GSoC Submission · Part 3 — EEG Dyadic Manifold Learning**
 > Dual-brain EEG preprocessing and CEBRA-based neural manifold decoding for dyadic affect perception.
 
 ---
@@ -78,86 +78,96 @@ Raw EDF → [EEG Preprocessing Pipeline] → Clean .fif files
 
 ### 01 · Data Ingestion — 4 × FIF Files
 
-| Stream | Condition | File |
-|--------|-----------|------|
-| Speaker | Positive | `speaker_positive_clean_raw.fif` |
-| Speaker | Negative | `speaker_negative_clean_raw.fif` |
-| Listener | Positive | `listener_positive_clean_raw.fif` |
-| Listener | Negative | `listener_negative_clean_raw.fif` |
+| Stream | Condition | File | Channels | Duration | Samples |
+|--------|-----------|------|----------|----------|---------|
+| Speaker | Positive | `speaker_positive_clean_raw.fif` | 64 | 147.8 s | 36,944 |
+| Speaker | Negative | `speaker_negative_clean_raw.fif` | 64 | 149.6 s | 37,399 |
+| Listener | Positive | `listener_positive_clean_raw.fif` | 64 | 147.8 s | 36,944 |
+| Listener | Negative | `listener_negative_clean_raw.fif` | 64 | 149.6 s | 37,399 |
 
-Sampling rate: 250 Hz (verified identical across all 4 files). Loaded via `mne.io.read_raw_fif(..., preload=True)`.
+Sampling rate: 250 Hz (verified identical across all 4 files). Loaded via `mne.io.read_raw_fif(..., preload=True)`. Arrays transposed `(channels × time) → (time × channels)`, trimmed to min-length per condition.
 
 ### 02 · Dyadic Joint Matrix Construction
 
-- `(t, channels)` arrays concatenated along channel axis → joint dyadic matrix `(t, 128)`
-- `ld_map (1284×4)` | `ld_map (1286×4)` → `final_map (74343×128)`
-- `run_pairs = ArrLtime → vstack` → `X_time (74343 × 196 × 16 × 1)`
-- **Card 0 & 1:** Speaker EEG · Cols 64–127 = Listener EEG · Value range `[−3.58e-5, 5.74e-5]` μV (raw)
+| Operation | Shape |
+|-----------|-------|
+| `SP_pos ⊕ LS_pos` | (36,944 × 64) + (36,944 × 64) → (36,944 × 128) |
+| `SP_neg ⊕ LS_neg` | (37,399 × 64) + (37,399 × 64) → (37,399 × 128) |
+| `dyad_pos + dyad_neg → vstack` | **X_raw (74,343 × 128) · 76.1 MB** |
+
+- Cols 0–63 = Speaker EEG · Cols 64–127 = Listener EEG
+- Value range: `[−3.08e-3, 3.74e-3]` µV (raw)
 
 ### 03 · Z-Normalisation (StandardScaler)
 
 | | Input Shape | Post-Norm Mean | Post-Norm Std |
 |--|-------------|----------------|---------------|
-| | X (74342 × 228) | ≈ 0 | ≈ 1.0000 |
+| | X (74,343 × 128) | ≈ 0 · range `[−1.04e-16, 1.33e-16]` | **= 1.0000** exact across all 128 channels |
 
 Rationale: high-impedance variance & ICA reconstruction differences → prevents high-variance channels from dominating CEBRA's InfoNCE loss.
 
 ### 04 · Behavioral Label Vector
 
-| Label | Condition | Samples | Balance Ratio |
-|-------|-----------|---------|---------------|
-| 0 | Positive Affect | 39,944 | 0.906 — **Balanced** |
-| 1 | Negative Affect | 37,399 | _(weighted sampling maintains balance)_ |
+| Label | Condition | Samples | Proportion | Balance Ratio |
+|-------|-----------|---------|------------|---------------|
+| 0 | Positive Affect | 36,944 | 49.7% | **0.988 — Balanced** |
+| 1 | Negative Affect | 37,399 | 50.3% | No class weighting required |
 
 ### 05 · CEBRA Model Architecture & Hyperparameters
 
-**CEBRA-Time** (Neural State — primary model)
+**CEBRA-Time** (Neural State)
 
 | Parameter | Value |
 |-----------|-------|
-| `model_architecture` | `offset1-amwgt` |
+| `model_architecture` | `offset10-model` |
 | `conditional` | `time` |
-| `input_dimension` | `(4, 8, 17, 15)` |
+| `output_dimension` | `[3, 6, 10, 15]` |
 | `distance` | `cosine` |
-| `output_dim` | `15` |
-| `learning_rate` | `1e-4` |
-| `max_iterations` | `5,000` |
-| `temperature` | `1.12 (learnt)` |
-| Grid | `4 dim × 2 offset = 8 models` · Best output_dim=20 · InfoNCE = **5.5362** |
+| `batch_size` | `512` |
+| `learning_rate` | `3e-4` |
+| `max_iterations` | `10,000` |
+| `temperature_mode` | `auto` |
+| `temperature` | `1.12 (init)` |
+| `time_offsets` | `[10, 20]` |
+| Grid | `4 dims × 2 offsets = 8 models` · Best: `output_dim=15, offset=20` · InfoNCE = **5.5362** |
 
 **CEBRA-Delta** (Neural Velocity)
 
 | Parameter | Value |
 |-----------|-------|
-| `model_architecture` | `offset15-model5` |
-| `conditional` | `delta` |
-| `output_dimension` | `(4, 8, 16, 15)` |
+| `model_architecture` | `offset10-model` |
+| `conditional` | `time_delta` |
+| `output_dimension` | `[3, 6, 10, 15]` |
 | `distance` | `cosine` |
-| `learning_rate` | `5e-4` |
-| `temperature` | `1.12 (learnt)` |
-| Grid | `4 dim × 4 offset = 15 models` · Best output_dim=15 · InfoNCE = **5.5365** |
+| `batch_size` | `512` |
+| `learning_rate` | `3e-4` |
+| `max_iterations` | `10,000` |
+| `temperature_mode` | `auto` |
+| `temperature` | `1.12 (init)` |
+| `time_offsets` | `[10]` |
+| Grid | `4 dims × 1 offset = 4 models` · Best: `output_dim=15` · InfoNCE = **5.5365** |
 
-> `offset10-model` = causal 1D CNN: 19-sample (48 ms @ 250 Hz) receptive field. **time** = pairs by label time; **delta** = pairs by label AND temporal gap (relative velocity).
+> `offset10-model` = causal 1D CNN with **10-sample (40 ms @ 250 Hz)** receptive field — captures local temporal context of neural oscillations. `cosine` distance = amplitude-invariant, encodes direction of activity patterns. `time` = pairs time-points by label; `time_delta` = pairs by label AND temporal gap (captures neural velocity / rate-of-change).
 
 ### 06 · Latent Embeddings (Best Models)
 
 | Embedding | Shape | Description |
 |-----------|-------|-------------|
-| `EMB_TIME` | (74,343 × 15) | Neural State manifold |
-| `EMB_DELTA` | (74,343 × 15) | Neural Velocity manifold |
+| `emb_time` | (74,343 × 15) | Neural State — Positive & Negative Affect separated on manifold |
+| `emb_delta` | (74,343 × 15) | Neural Velocity — dynamic affect separation, better KNN than Time |
 
-Visualised as 3D coloured (time & R-Z) in 6-panel manifold comparison · 16-sample inspection · k2-max 2D projection plots.
+Visualised as 3D subspace (dims 0–2) in 4-panel manifold comparison · 16-angle inspection · 12-way 2D projection plots.
 
 ### 07 · Shuffled-Label Control Experiment
 
-Hypothesis-permuted labels on frozen architecture. Ran **37,274 label transitions** (n=1 in the sequence).
+Hypothesis: if labels are permuted randomly, CEBRA produces a uniform hyperspherical cloud — not a structured manifold. Shuffle introduced **37,274 label transitions** vs. 1 in the original.
 
-| Control | Best Loss | 
-|---------|-----------|
-| Neural State (Time) | `output_dim=20`, offset=20 · `6.2381` | 
-| Neural Velocity (Delta) | `control_dim=4` · `log P(2) ≈ 6.2389` | 
+| Control | Best Config | Final Loss | Theoretical Min | Interpretation |
+|---------|-------------|------------|-----------------|----------------|
+| Neural State (Time) | `output_dim=3`, `offset=20` | 6.2381 | log(512) = 6.238 ✓ | Random baseline hit |
+| Neural Velocity (Delta) | `output_dim=6` | 6.2383 | log(512) = 6.238 ✓ | Random baseline hit |
 
-CEBRA does not extract structure from random noise.
+> InfoNCE with `batch=512` and uniform negative sampling has theoretical minimum = `log(512) ≈ 6.238`. Control models converged to exactly this value — confirming CEBRA does not extract structure from random noise.
 
 ### 08 · Comprehensive Evaluation
 
@@ -165,34 +175,34 @@ CEBRA does not extract structure from random noise.
 
 | Model | Type | KNN Accuracy | F1 (Macro) | InfoNCE Loss | Output Dim |
 |-------|------|-------------|------------|--------------|------------|
-| Main: Neural State | Time | 81.9% | 84.0% | 5.5782 | 15 |
-| Main: Neural Velocity | **Delta** | **87.10% ★** | **87.3%** | 7.5525 | **15** |
-| Control: State (Shuffled) | Time | 54.4% | 49.8% | 6.214 | 0 |
-| Control: Velocity (Shuffled) | Delta | 50.11% | 52.12% | 2.2191 | 0 |
+| Main: Neural State | Time | 84.93% | 84.92% | 5.5362 | 15 |
+| Main: Neural Velocity | **Delta** | **87.26% ★** | **87.25%** | 5.5365 | **15** |
+| Control: State (Shuffled) | Time | 49.39% | 49.38% | 6.2381 | 3 |
+| Control: Velocity (Shuffled) | Delta | 50.33% | 50.32% | 6.2383 | 6 |
 
 **CEBRA Native Consistency (Between Runs R1 vs R2)**
 
-| Model | Consistency |
-|-------|-------------|
-| Main — Time | **0.98** (highly consistent) |
-| Main — Delta | **0.99** (highly consistent) |
-| Control — Time | 0.16 |
-| Control — Delta | 0.14 |
+| Model | Consistency | Interpretation |
+|-------|-------------|----------------|
+| Main — Time | **0.98** | Highly consistent |
+| Main — Delta | **0.99** | Highly consistent |
+| Control — Time | 0.16 | Random topology |
+| Control — Delta | 0.14 | Random topology |
 
 ### 09 · Topological Validation — CE-KS Report
 
-Cross-embedding distributions via GPU-batched cosine affinity matrices (L2 normalised embeddings); KS statistic compares CE distributions between embedding pairs.
+Cross-entropy distributions computed via GPU-batched cosine affinity matrices (L2-normalised embeddings; batch=2,048). KS statistic compares CE distributions between embedding pairs.
 
 | Test Type | Comparison | KS Effect Size | p-value | Hypothesis | Status |
 |-----------|-----------|---------------|---------|------------|--------|
-| Intra-Run Stability | Main_Re_R1 vs R2 | 0.1048 | 3.93e-11 | Identical Topology | ✅ Pass |
-| Intra-Run Stability | Main_De_R1 vs R2 | 0.1530 | 1.44e-23 | Identical Topology | ✅ Pass |
-| Intra-Run Stability | Main_De_R1 vs R2 | 0.2148 | 3.63e-46 | Identical Topology | ✅ Fail (label expected) |
-| Label Dependency | Main_Re vs rl_r1w | **0.0000** | 1.37e+04 | Different Topology | ✅ Pass |
-| Label Dependency | Main_De vs rl_r1w | **0.0000** | 1.37e+04 | Different Topology | ✅ Pass |
-| Cross-Model | Main_Re vs Main_De | 0.3109 | 1.91e+72 | Different Topology | ❌ Fail (cross expected) |
+| Intra-Run Stability | Main_Time R1 vs R2 | 0.0098 | 4.96e-01 | Identical Topology | ✅ Pass |
+| Intra-Run Stability | Main_Delta R1 vs R2 | 0.0050 | 5.44e-01 | Identical Topology | ✅ Pass |
+| Intra-Run Stability | Ctrl_Time R1 vs R2 | 0.6168 | 0.00e+00 | Identical Topology | ⚠️ Fail *(random topology expected)* |
+| Label Dependency | Main_Time vs Ctrl_Time | **1.0000** | 0.00e+00 | Different Topology | ✅ Pass |
+| Label Dependency | Main_Delta vs Ctrl_Delta | **1.0000** | 0.00e+00 | Different Topology | ✅ Pass |
+| State vs Velocity | Main_Time vs Main_Delta | 0.0063 | 4.65e-01 | Different Topology | ⚠️ Fail *(similar topology)* |
 
-> Key finding: 5 of 6 topology tests pass (the structural dependent geometry is statistically driven by learned label dependencies, not data artefacts). Failure to reject in expected 5 successes confirms KS tests correctly identify the latent underlying neural geometry.
+> **Key finding:** KS=1.0 for label dependency tests proves the structured manifold geometry is entirely driven by behavioral labels, not data artefacts. Control's intra-run failure is expected (random topology is not reproducible). State vs Velocity sharing topology suggests both conditionals encode the same underlying neural geometry.
 
 ---
 
@@ -201,21 +211,19 @@ Cross-embedding distributions via GPU-batched cosine affinity matrices (L2 norma
 ```
 BEST MODEL
 CEBRA-Delta (Neural Velocity · output_dim=15)
-  KNN Acc = 87.24%
-  F1 Macro = 87.24%
+  KNN Acc = 87.26%
+  F1 Macro = 87.25%
 
-CONTROL VALIDATION
-  Shuffled labels (chance level)
-  KNN = 50% (chance level)
-  Consistency = 0.16
+CONTROL VALIDATION  ✓ Confirmed
+  Shuffled labels → loss = log(512) ≈ 6.238
+  KNN ≈ 50% (chance)
+  Consistency ≈ 0.15
 
 REPRODUCIBILITY
-  r = 0.99
-  CEBRA (consistency R1 vs R2)
-  Quite a certified geometry
+  ~0.99 CEBRA consistency (R1 vs R2)
+  KS < 0.01 across main runs
+  Stable manifold geometry
 ```
-
-**Conclusion:** CEBRA successfully learns a structured, reproducible, label-dependent neural manifold from dyadic EEG data (Speaker + Listener concatenated across 128 ch). All runs transition at the affect boundary (offset = 0 → Negative transitions are 2× more encoded in latent space — with neural velocity (delta) capturing role-change dynamics slightly better than neural state (time). The manifold structure is **not** a dimensionality reduction artefact: CE-KS label dependency score ≈ 1.0 with p ≈ 0.
 
 ---
 
