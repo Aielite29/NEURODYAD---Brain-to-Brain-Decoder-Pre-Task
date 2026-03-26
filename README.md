@@ -152,10 +152,10 @@ Visualised as 3D coloured (time & R-Z) in 6-panel manifold comparison · 16-samp
 
 Hypothesis-permuted labels on frozen architecture. Ran **37,274 label transitions** (n=1 in the sequence).
 
-| Control | Best Loss | Theoretical Min | Random Baseline |
-|---------|-----------|-----------------|-----------------|
-| Neural State (Time) | `output_dim=20`, offset=20 · `6.14↑` | 1.221↑ | Random Baseline `(≥ 1)` |
-| Neural Velocity (Delta) | `control_dim=4` · `log P(2) ≈ 6.209↑` | Random Baseline `(≥ 1)` |
+| Control | Best Loss | 
+|---------|-----------|
+| Neural State (Time) | `output_dim=20`, offset=20 · `6.2381` | 
+| Neural Velocity (Delta) | `control_dim=4` · `log P(2) ≈ 6.2389` | 
 
 CEBRA does not extract structure from random noise.
 
@@ -187,7 +187,7 @@ Cross-embedding distributions via GPU-batched cosine affinity matrices (L2 norma
 |-----------|-----------|---------------|---------|------------|--------|
 | Intra-Run Stability | Main_Re_R1 vs R2 | 0.1048 | 3.93e-11 | Identical Topology | ✅ Pass |
 | Intra-Run Stability | Main_De_R1 vs R2 | 0.1530 | 1.44e-23 | Identical Topology | ✅ Pass |
-| Intra-Run Stability | Main_De_R1 vs R2 | 0.2148 | 3.63e-46 | Identical Topology | ✅ Pass (label expected) |
+| Intra-Run Stability | Main_De_R1 vs R2 | 0.2148 | 3.63e-46 | Identical Topology | ✅ Fail (label expected) |
 | Label Dependency | Main_Re vs rl_r1w | **0.0000** | 1.37e+04 | Different Topology | ✅ Pass |
 | Label Dependency | Main_De vs rl_r1w | **0.0000** | 1.37e+04 | Different Topology | ✅ Pass |
 | Cross-Model | Main_Re vs Main_De | 0.3109 | 1.91e+72 | Different Topology | ❌ Fail (cross expected) |
